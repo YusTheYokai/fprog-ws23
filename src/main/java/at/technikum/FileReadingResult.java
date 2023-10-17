@@ -1,18 +1,18 @@
 package at.technikum;
 
-import java.util.List;
+import java.util.stream.Stream;
 
 public class FileReadingResult {
 
-    private final List<String> text;
-    private final List<String> warTerms;
-    private final List<String> peaceTerms;
+    private final Stream<String> text;
+    private final Stream<String> warTerms;
+    private final Stream<String> peaceTerms;
 
     // /////////////////////////////////////////////////////////////////////////
     // Init
     // /////////////////////////////////////////////////////////////////////////
 
-    public FileReadingResult(List<String> text, List<String> warTerms, List<String> peaceTerms) {
+    public FileReadingResult(Stream<String> text, Stream<String> warTerms, Stream<String> peaceTerms) {
         this.text = text;
         this.warTerms = warTerms;
         this.peaceTerms = peaceTerms;
@@ -22,15 +22,15 @@ public class FileReadingResult {
     // Getters
     // /////////////////////////////////////////////////////////////////////////
 
-    public List<String> getText() {
+    public Stream<String> getText() {
         return text;
     }
 
-    public List<String> getWarTerms() {
+    public Stream<String> getWarTerms() {
         return warTerms;
     }
 
-    public List<String> getPeaceTerms() {
+    public Stream<String> getPeaceTerms() {
         return peaceTerms;
     }
 }

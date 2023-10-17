@@ -10,7 +10,8 @@
             "request": "launch",
             "mainClass": "at.technikum.App",
             "projectName": "fprog-ws23_c64ef031",
-            "args": "src/main/resources/war_and_peace.txt"
+            "args": "src/main/resources/war_and_peace.txt",
+            "vmArgs": "--enable-preview"
         }
     ]
 }

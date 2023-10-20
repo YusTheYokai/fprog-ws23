@@ -50,6 +50,7 @@ public class App {
         var warTerms = clean(result.getWarTerms());
         var peaceTerms = clean(result.getPeaceTerms());
 
+        // https://medium.com/@willymyfriend/java-io-monad-reality-or-fiction-5ae9078c9b44 !!!
         // Handle optional and exit application in pure way?
         var story = storyFromBook(clean(result.getText()).collect(Collectors.joining()));
 

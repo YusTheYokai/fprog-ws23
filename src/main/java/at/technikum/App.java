@@ -3,10 +3,10 @@ package at.technikum;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.time.LocalDateTime;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -14,10 +14,12 @@ import java.util.stream.Stream;
 
 public class App {
 
-    
-    private static final int DEFAULT_THREAD_COUNT = 4;
-    private static final String BEGIN_END_INDICATOR = "^\\*\\*\\*.*\\*\\*\\*$";
+    private static final String BEGIN_END_INDICATOR = "\\*\\*\\* .* \\*\\*\\*";
     private static final String CHAPTER_DELMITER = "CHAPTER";
+
+    private static final Function<LogLevel, Function<String, LogLeveledException>> createLogLeveledException = logLevel -> message -> new LogLeveledException(logLevel, message);
+    private static final Function<String, LogLeveledException> error = createLogLeveledException.apply(LogLevel.ERROR);
+    private static final Function<String, LogLeveledException> fatal = createLogLeveledException.apply(LogLevel.FATAL);
 
     private static final Function<String, Optional<Stream<String>>> readFile = name -> {
         try {
@@ -31,76 +33,41 @@ public class App {
     private static final Supplier<Optional<Stream<String>>> readPeaceTerms = () -> readFile.apply("src/main/resources/peace_terms.txt");
 
     public static final void main(String[] args) {
-
-        // IMPURE //////////////////////////////////////////////////////////////
-
-        if (args.length == 1 || args.length == 2) {
-            Logger.error("Invalid number of arguments");
-            System.out.println("Usage: java -jar <jar-file> <text-file> <thread-count>");
-            System.exit(1);
-        }
-
-        var result = readFiles(args[0]);
-
-        // IMPURE //////////////////////////////////////////////////////////////
-        // PURE   //////////////////////////////////////////////////////////////
-
-        var threadCount = args.length == 1 ? DEFAULT_THREAD_COUNT :  parseInt(args[1]).orElse(DEFAULT_THREAD_COUNT);
-
-        var warTerms = clean(result.getWarTerms());
-        var peaceTerms = clean(result.getPeaceTerms());
-
-        // https://medium.com/@willymyfriend/java-io-monad-reality-or-fiction-5ae9078c9b44 !!!
-        // Handle optional and exit application in pure way?
-        var story = storyFromBook(clean(result.getText()).collect(Collectors.joining()));
-
-        var chapters = story.split(CHAPTER_DELMITER);
-
-        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
-        ChapterClassification[] classifications = new ChapterClassification[chapters.length];
-
-        Arrays.stream(chapters).flatMap(Stream::of).skip(1).forEach(chapter -> {
-            var warTermsCount = warTerms.filter(chapter::contains).count();
-            var peaceTermsCount = peaceTerms.filter(chapter::contains).count();
-
-            Logger.info(String.format("Chapter %d: %d war terms, %d peace terms", chapter.charAt(0), warTermsCount, peaceTermsCount));
-        });
-
-        // PURE   //////////////////////////////////////////////////////////////
-        // IMPURE //////////////////////////////////////////////////////////////
-    }
-
-    // IMPURE //////////////////////////////////////////////////////////////////
-
-    private static final FileReadingResult readFiles(String textFile) {
-        var text = readFile.apply(textFile);
-        checkOptionalFile(text, textFile);
-
-        var warTerms = readWarTerms.get();
-        checkOptionalFile(warTerms, "war terms");
-
-        var peaceTerms = readPeaceTerms.get();
-        checkOptionalFile(peaceTerms, "peace terms");
-
-        return new FileReadingResult(text.get(), warTerms.get(), peaceTerms.get());
-    }
-
-    private static final void checkOptionalFile(Optional<Stream<String>> file, String name) {
-        if (file.isEmpty()) {
-            Logger.error(String.format("Could not read %s", name));
-            System.exit(1);
-        }
-    }
-
-    // IMPURE //////////////////////////////////////////////////////////////////
-    // PURE   //////////////////////////////////////////////////////////////////
-
-    private static Optional<Integer> parseInt(String s) {
         try {
-            return Optional.of(Integer.parseInt(s));
-        } catch (NumberFormatException e) {
-            return Optional.empty();
+            pureMain(args);
+        } catch (LogLeveledException e) {
+            Arrays.stream(e.getMessages())
+                    .forEachOrdered(message -> log(e.getLogLevel(), message));
         }
+    }
+
+    private static void pureMain(String[] args) throws LogLeveledException {
+        if (args.length != 1) {
+            throw new LogLeveledException(LogLevel.ERROR, "Invalid number of arguments.", "Usage: java -jar <jar-file> <text-file>");
+        }
+
+        List<String> warTerms = readWarTerms.get()
+                .map(App::clean)
+                .orElseThrow(() -> fatal.apply("Could not read war terms."))
+                .toList();
+
+        List<String> peaceTerms = readPeaceTerms.get()
+                .map(App::clean)
+                .orElseThrow(() -> fatal.apply("Could not read peace terms."))
+                .toList();
+
+        Stream<String> bookLines = readFile.apply(args[0]).orElseThrow(() -> error.apply(String.format("Could not read file %s.", args[0])));
+        String[] chapters = storyFromBook(bookLines.collect(Collectors.joining()))
+                .flatMap(App::storyFromBook)
+                .map(story -> story.split(CHAPTER_DELMITER))
+                .orElseThrow(() -> error.apply("Could not find story in book."));
+
+        Arrays.stream(chapters).map(chapter -> Arrays.stream(chapter.split(""))).map(App::clean).forEachOrdered(chapter -> {
+            var warTermsCount = chapter.filter(warTerms::contains).count();
+            var peaceTermsCount = chapter.filter(peaceTerms::contains).count();
+
+            log(LogLevel.INFO, String.format("War terms: %d, Peace terms: %d", warTermsCount, peaceTermsCount));
+        });
     }
 
     private static Optional<String> storyFromBook(String book) {
@@ -115,5 +82,10 @@ public class App {
 
     private static final Stream<String> clean(Stream<String> s) {
         return s.filter(String::isBlank).map(String::trim);
+    }
+
+    public static void log(LogLevel level, String message) {
+        var log = String.format("%s %s %s", LocalDateTime.now().toString(), level.name(), message);
+        level.getStream().println(log);
     }
 }

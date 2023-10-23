@@ -9,13 +9,14 @@ import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.function.UnaryOperator;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class App {
 
-    private static final String BEGIN_END_INDICATOR = "\\*\\*\\* .* \\*\\*\\*";
-    private static final String CHAPTER_DELMITER = "CHAPTER";
+    private static final String CHAPTER_REGEX = "CHAPTER \\d{1,2} (.*?) CHAPTER";
 
     private static final Function<LogLevel, Function<String, LogLeveledException>> createLogLeveledException = logLevel -> message -> new LogLeveledException(logLevel, message);
     private static final Function<String, LogLeveledException> error = createLogLeveledException.apply(LogLevel.ERROR);
@@ -34,55 +35,67 @@ public class App {
 
     public static final void main(String[] args) {
         try {
-            pureMain(args);
+            pureMain(args).map(ChapterClassification::name).forEach(System.out::println);
         } catch (LogLeveledException e) {
             Arrays.stream(e.getMessages())
                     .forEachOrdered(message -> log(e.getLogLevel(), message));
         }
     }
 
-    private static void pureMain(String[] args) throws LogLeveledException {
+    private static Stream<ChapterClassification> pureMain(String[] args) throws LogLeveledException {
         if (args.length != 1) {
             throw new LogLeveledException(LogLevel.ERROR, "Invalid number of arguments.", "Usage: java -jar <jar-file> <text-file>");
         }
 
         List<String> warTerms = readWarTerms.get()
-                .map(App::clean)
+                .map(clean)
                 .orElseThrow(() -> fatal.apply("Could not read war terms."))
                 .toList();
 
         List<String> peaceTerms = readPeaceTerms.get()
-                .map(App::clean)
+                .map(clean)
                 .orElseThrow(() -> fatal.apply("Could not read peace terms."))
                 .toList();
 
-        Stream<String> bookLines = readFile.apply(args[0]).orElseThrow(() -> error.apply(String.format("Could not read file %s.", args[0])));
-        String[] chapters = storyFromBook(bookLines.collect(Collectors.joining()))
-                .flatMap(App::storyFromBook)
-                .map(story -> story.split(CHAPTER_DELMITER))
-                .orElseThrow(() -> error.apply("Could not find story in book."));
+        Stream<String> chapters = readFile.apply(args[0])
+                .map(clean)
+                .map(lines -> lines.collect(Collectors.joining(" ")))
+                .map(chaptersFromBook)
+                .orElseThrow(() -> error.apply(String.format("Could not read file %s.", args[0])));
 
-        Arrays.stream(chapters).map(chapter -> Arrays.stream(chapter.split(""))).map(App::clean).forEachOrdered(chapter -> {
-            var warTermsCount = chapter.filter(warTerms::contains).count();
-            var peaceTermsCount = chapter.filter(peaceTerms::contains).count();
-
-            log(LogLevel.INFO, String.format("War terms: %d, Peace terms: %d", warTermsCount, peaceTermsCount));
-        });
-    }
-
-    private static Optional<String> storyFromBook(String book) {
-        var bookParts = book.split(BEGIN_END_INDICATOR);
-
-        if (bookParts.length < 2) {
-            return Optional.empty();
+        try {
+            Files.write(Paths.get("src/main/resources/out.txt"), chapters.collect(Collectors.toList()));
+        } catch (IOException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
         }
 
-        return Optional.of(bookParts[1]);
+        return chapters.map(chapter -> Arrays.stream(chapter.split(" "))).map(c -> classifyChapter.apply(c, warTerms, peaceTerms));
     }
 
-    private static final Stream<String> clean(Stream<String> s) {
-        return s.filter(String::isBlank).map(String::trim);
-    }
+    private static final TriFunction<
+        Stream<String>,
+        List<String>,
+        List<String>,
+        ChapterClassification
+    > classifyChapter = (chapter, warTerms, peaceTerms) -> {
+        chapter = chapter.map(str -> str.replaceAll("\\W", "").toLowerCase());
+
+        // TODO; This is a workaround for the fact that the stream is consumed by the first call to count().
+        List<String> c = chapter.toList();
+        var warTermsCount = c.stream().filter(warTerms::contains).count();
+        var peaceTermsCount = c.stream().filter(peaceTerms::contains).count();
+
+        return warTermsCount > peaceTermsCount ? ChapterClassification.WAR : ChapterClassification.PEACE;
+    };
+
+    private static final Function<String, Stream<String>> chaptersFromBook = s -> {
+        var pattern = Pattern.compile(CHAPTER_REGEX, Pattern.MULTILINE);
+        var matcher = pattern.matcher(s);
+        return matcher.results().map(result -> result.group(1));
+    };
+
+    private static final UnaryOperator<Stream<String>> clean = s -> s.filter(str -> !str.isBlank()).map(String::trim);
 
     public static void log(LogLevel level, String message) {
         var log = String.format("%s %s %s", LocalDateTime.now().toString(), level.name(), message);

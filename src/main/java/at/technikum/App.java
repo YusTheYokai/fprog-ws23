@@ -16,7 +16,7 @@ import java.util.stream.Stream;
 
 public class App {
 
-    private static final String CHAPTER_REGEX = "CHAPTER \\d{1,2} (.*?) CHAPTER";
+    private static final String CHAPTER_REGEX = "CHAPTER \\d{1,2} (.*?) (?=CHAPTER)";
 
     private static final Function<LogLevel, Function<String, LogLeveledException>> createLogLeveledException = logLevel -> message -> new LogLeveledException(logLevel, message);
     private static final Function<String, LogLeveledException> error = createLogLeveledException.apply(LogLevel.ERROR);
@@ -42,36 +42,31 @@ public class App {
         }
     }
 
-    private static Stream<ChapterClassification> pureMain(String[] args) throws LogLeveledException {
+    private static Stream<ChapterClassification> pureMain(String[] args) {
         if (args.length != 1) {
             throw new LogLeveledException(LogLevel.ERROR, "Invalid number of arguments.", "Usage: java -jar <jar-file> <text-file>");
         }
 
         List<String> warTerms = readWarTerms.get()
                 .map(clean)
-                .orElseThrow(() -> fatal.apply("Could not read war terms."))
-                .toList();
+                .map(Stream::toList)
+                .orElseThrow(() -> fatal.apply("Could not read war terms."));
 
         List<String> peaceTerms = readPeaceTerms.get()
                 .map(clean)
-                .orElseThrow(() -> fatal.apply("Could not read peace terms."))
-                .toList();
+                .map(Stream::toList)
+                .orElseThrow(() -> fatal.apply("Could not read peace terms."));
 
-        Stream<String> chapters = readFile.apply(args[0])
-                .map(clean)
-                .map(lines -> lines.collect(Collectors.joining(" ")))
-                .map(chaptersFromBook)
+        Stream<String> chapters = getChapters.apply(args[0])
                 .orElseThrow(() -> error.apply(String.format("Could not read file %s.", args[0])));
-
-        try {
-            Files.write(Paths.get("src/main/resources/out.txt"), chapters.collect(Collectors.toList()));
-        } catch (IOException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-        }
 
         return chapters.map(chapter -> Arrays.stream(chapter.split(" "))).map(c -> classifyChapter.apply(c, warTerms, peaceTerms));
     }
+
+    private static Function<String, Optional<Stream<String>>> getChapters = filename -> readFile.apply(filename)
+                .map(App.clean)
+                .map(lines -> lines.collect(Collectors.joining(" ")))
+                .map(App.chaptersFromBook);
 
     private static final TriFunction<
         Stream<String>,
@@ -79,9 +74,10 @@ public class App {
         List<String>,
         ChapterClassification
     > classifyChapter = (chapter, warTerms, peaceTerms) -> {
+        // Remove all non word characters and convert to lowercase.
         chapter = chapter.map(str -> str.replaceAll("\\W", "").toLowerCase());
 
-        // TODO; This is a workaround for the fact that the stream is consumed by the first call to count().
+        // TODO: This is a workaround for the fact that the stream is consumed by the first call to count().
         List<String> c = chapter.toList();
         var warTermsCount = c.stream().filter(warTerms::contains).count();
         var peaceTermsCount = c.stream().filter(peaceTerms::contains).count();

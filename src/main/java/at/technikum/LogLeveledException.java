@@ -3,7 +3,7 @@ package at.technikum;
 import java.util.Arrays;
 import java.util.stream.Collectors;
 
-public class LogLeveledException extends Exception {
+public class LogLeveledException extends RuntimeException {
 
     private final LogLevel logLevel;
     private final String[] messages;

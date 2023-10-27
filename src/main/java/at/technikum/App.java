@@ -14,7 +14,13 @@ import java.util.stream.Stream;
 
 public class App {
 
-    private static final String CHAPTER_REGEX = "CHAPTER \\d{1,2} (.*?) (?=CHAPTER)";
+    /**
+     * Captures the text between chapter headlines.
+     * The lookahead is used to not consume the next chapter headline.
+     * Need to check for END OF THE PROJECT GUTENBERG EBOOK as the last
+     * chapter is not followed by another chapter headline.
+     */
+    private static final String CHAPTER_REGEX = "CHAPTER \\d{1,2} (.*?) (?=CHAPTER)|(\\*\\*\\* END OF THE PROJECT GUTENBERG EBOOK)";
 
     private static final Function<String, Try<Stream<String>>> readFile = name -> {
         try {

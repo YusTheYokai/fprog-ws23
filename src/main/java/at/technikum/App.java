@@ -5,11 +5,14 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class App {
@@ -20,7 +23,7 @@ public class App {
      * Need to check for END OF THE PROJECT GUTENBERG EBOOK as the last
      * chapter is not followed by another chapter headline.
      */
-    private static final String CHAPTER_REGEX = "CHAPTER \\d{1,2} (.*?) (?=CHAPTER)|(\\*\\*\\* END OF THE PROJECT GUTENBERG EBOOK)";
+    private static final String CHAPTER_REGEX = "CHAPTER \\d{1,2} (.*?) (?=(CHAPTER)|(\\*\\*\\* END OF THE PROJECT GUTENBERG EBOOK))";
 
     private static final Function<String, Try<Stream<String>>> readFile = name -> {
         try {
@@ -43,7 +46,7 @@ public class App {
     private static final Function<Stream<String>, String> join = s -> s.collect(Collectors.joining(" "));
     private static final UnaryOperator<Stream<String>> getChapters = textLines -> clean.andThen(join).andThen(mapToChapters).apply(textLines);
 
-    private static final Function<List<String>, Function<List<String>, Function<Stream<String>, ChapterClassification>>> classifyChapter = warTerms -> peaceTerms -> chapter -> {
+    private static final Function<List<String>, Function<List<String>, Function<Stream<String>, Optional<ChapterClassification>>>> classifyChapter = warTerms -> peaceTerms -> chapter -> {
         // Remove all non word characters and convert to lowercase.
         chapter = chapter.map(str -> str.replaceAll("\\W", "").toLowerCase());
 
@@ -52,11 +55,21 @@ public class App {
         List<String> words = chapter.toList();
         var warTermsCount = words.stream().filter(warTerms::contains).count();
         var peaceTermsCount = words.stream().filter(peaceTerms::contains).count();
+        var warTermDistances = IntStream.range(0, words.size()).mapToObj(i -> new Pair<Integer, String>(i, words.get(i))).filter(p -> warTerms.contains(p.getSecond())).mapToInt(Pair::getFirst).reduce((left, right) -> right - left);
+        var peaceTermDistances = IntStream.range(0, words.size()).mapToObj(i -> new Pair<Integer, String>(i, words.get(i))).filter(p -> peaceTerms.contains(p.getSecond())).mapToInt(Pair::getFirst).reduce((left, right) -> right - left);
 
-        return warTermsCount > peaceTermsCount ? ChapterClassification.WAR : ChapterClassification.PEACE;
+        if (warTermDistances.isEmpty() && peaceTermDistances.isEmpty()) {
+            return Optional.empty();
+        } else if (warTermDistances.isEmpty()) {
+            return Optional.of(ChapterClassification.PEACE);
+        } else if (peaceTermDistances.isEmpty()) {
+            return Optional.of(ChapterClassification.WAR);
+        }
+
+        return Optional.of(warTermDistances.getAsInt() / warTermsCount > peaceTermDistances.getAsInt() / peaceTermsCount ? ChapterClassification.WAR : ChapterClassification.PEACE);
     };
 
-    private static Function<String[], Either<Exception, Stream<ChapterClassification>>> pureMain = args -> {
+    private static Function<String[], Either<Exception, Stream<Optional<ChapterClassification>>>> pureMain = args -> {
         if (args.length != 1) {
             return Either.left(new Exception("Invalid number of arguments. Usage: java -jar <jar-file> <text-file>."));
         }
@@ -92,6 +105,9 @@ public class App {
             System.exit(1);
         }
 
-        result.getRight().forEach(System.out::println);
+        AtomicInteger chapterCount = new AtomicInteger(1);
+        result.getRight()
+                .map(o -> o.orElseGet(() -> ChapterClassification.NONE))
+                .map(c -> String.format("Chapter %d: %s", chapterCount.getAndIncrement(), c.name())).forEachOrdered(System.out::println);
     }
 }

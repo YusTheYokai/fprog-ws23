@@ -12,7 +12,6 @@ import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class App {
@@ -25,6 +24,13 @@ public class App {
      */
     private static final String CHAPTER_REGEX = "CHAPTER \\d{1,2} (.*?) (?=(CHAPTER)|(\\*\\*\\* END OF THE PROJECT GUTENBERG EBOOK))";
 
+    // /////////////////////////////////////////////////////////////////////////
+    // I/O
+    // /////////////////////////////////////////////////////////////////////////
+
+    /**
+     * Reads a file and returns a Try of a Stream of lines.
+     */
     private static final Function<String, Try<Stream<String>>> readFile = name -> {
         try {
             return Try.success(Files.lines(Paths.get(name)));
@@ -33,43 +39,91 @@ public class App {
         }
     };
 
+    /**
+     * Reads the war terms file.
+     * @see readFile
+     */
     private static final Supplier<Try<Stream<String>>> readWarTerms = () -> readFile.apply("src/main/resources/war_terms.txt");
+
+    /**
+     * Reads the peace terms file.
+     * @see readFile
+     */
     private static final Supplier<Try<Stream<String>>> readPeaceTerms = () -> readFile.apply("src/main/resources/peace_terms.txt");
 
+    // /////////////////////////////////////////////////////////////////////////
+    // TEXT PROCESSING
+    // /////////////////////////////////////////////////////////////////////////
+
+    /**
+     * Removes blank lines and trims the lines.
+     */
     private static final UnaryOperator<Stream<String>> clean = s -> s.filter(str -> !str.isBlank()).map(String::trim);
+
+    /**
+     * Extracts the chapters from the text.
+     */
     private static final Function<String, Stream<String>> mapToChapters = s -> {
         var pattern = Pattern.compile(CHAPTER_REGEX, Pattern.MULTILINE);
         var matcher = pattern.matcher(s);
         return matcher.results().map(result -> result.group(1));
     };
 
+    /**
+     * Joins a stream of strings using space as the delimiter.
+     */
     private static final Function<Stream<String>, String> join = s -> s.collect(Collectors.joining(" "));
+
+    /**
+     * Maps a stream of strings to a stream of chapters.
+     * @see clean
+     * @see join
+     * @see mapToChapters
+     */
     private static final UnaryOperator<Stream<String>> getChapters = textLines -> clean.andThen(join).andThen(mapToChapters).apply(textLines);
 
-    private static final Function<List<String>, Function<List<String>, Function<Stream<String>, Optional<ChapterClassification>>>> classifyChapter = warTerms -> peaceTerms -> chapter -> {
-        // Remove all non word characters and convert to lowercase.
-        chapter = chapter.map(str -> str.replaceAll("\\W", "").toLowerCase());
+    /**
+     * Supplies a stream of all words that are contained in filterList.
+     */
+    private static final Function<
+        List<String>,
+        Function<
+            List<String>,
+            Stream<String>
+        >
+    > getFilteredWordStream = words -> filterList -> words.stream().filter(filterList::contains);
 
-        // This is a workaround for the fact that
-        // the stream is consumed by the first call to count.
-        List<String> words = chapter.toList();
-        var warTermsCount = words.stream().filter(warTerms::contains).count();
-        var peaceTermsCount = words.stream().filter(peaceTerms::contains).count();
-        var warTermDistances = IntStream.range(0, words.size()).mapToObj(i -> new Pair<Integer, String>(i, words.get(i))).filter(p -> warTerms.contains(p.getSecond())).mapToInt(Pair::getFirst).reduce((left, right) -> right - left);
-        var peaceTermDistances = IntStream.range(0, words.size()).mapToObj(i -> new Pair<Integer, String>(i, words.get(i))).filter(p -> peaceTerms.contains(p.getSecond())).mapToInt(Pair::getFirst).reduce((left, right) -> right - left);
+    /**
+     * Classifies a chapter as WAR or PEACE using the count of war and peace terms.
+     */
+    private static final Function<
+        List<String>,
+        Function<
+            List<String>,
+            Function<
+                Stream<String>,
+                Optional<Classification>>
+            >
+        > classifyChapter = warTerms -> peaceTerms -> chapter -> {
+        var cleanedChapter = chapter.map(str -> str.replaceAll("\\W", "").toLowerCase());
 
-        if (warTermDistances.isEmpty() && peaceTermDistances.isEmpty()) {
-            return Optional.empty();
-        } else if (warTermDistances.isEmpty()) {
-            return Optional.of(ChapterClassification.PEACE);
-        } else if (peaceTermDistances.isEmpty()) {
-            return Optional.of(ChapterClassification.WAR);
-        }
+        var curriedGetFilteredWordStream = getFilteredWordStream.apply(cleanedChapter.toList());
+        var warTermsCount = curriedGetFilteredWordStream.apply(warTerms).count();
+        var peaceTermsCount = curriedGetFilteredWordStream.apply(peaceTerms).count();
 
-        return Optional.of(warTermDistances.getAsInt() / warTermsCount > peaceTermDistances.getAsInt() / peaceTermsCount ? ChapterClassification.WAR : ChapterClassification.PEACE);
+        return Optional.of(warTermsCount > peaceTermsCount ? Classification.WAR : Classification.PEACE);
     };
 
-    private static Function<String[], Either<Exception, Stream<Optional<ChapterClassification>>>> pureMain = args -> {
+    /**
+     * Splits a string at spaces.
+     */
+    private static final Function<String, Stream<String>> splitAtSpace = s -> Arrays.stream(s.split(" "));
+
+    // /////////////////////////////////////////////////////////////////////////
+    // MAIN
+    // /////////////////////////////////////////////////////////////////////////
+
+    private static final Function<String[], Either<Exception, Stream<Optional<Classification>>>> pureMain = args -> {
         if (args.length != 1) {
             return Either.left(new Exception("Invalid number of arguments. Usage: java -jar <jar-file> <text-file>."));
         }
@@ -94,7 +148,7 @@ public class App {
 
         var classify = classifyChapter.apply(warTerms).apply(peaceTerms);
 
-        return Either.right(getChapters.apply(textTry.get()).map(chapter -> Arrays.stream(chapter.split(" "))).map(classify));
+        return Either.right(getChapters.apply(textTry.get()).map(splitAtSpace).map(classify));
     };
 
     public static final void main(String[] args) {
@@ -107,7 +161,8 @@ public class App {
 
         AtomicInteger chapterCount = new AtomicInteger(1);
         result.getRight()
-                .map(o -> o.orElseGet(() -> ChapterClassification.NONE))
-                .map(c -> String.format("Chapter %d: %s", chapterCount.getAndIncrement(), c.name())).forEachOrdered(System.out::println);
+                .map(o -> o.orElseGet(() -> Classification.NONE))
+                .map(c -> String.format("Chapter %d: %s", chapterCount.getAndIncrement(), c.name()))
+                .forEachOrdered(System.out::println);
     }
 }

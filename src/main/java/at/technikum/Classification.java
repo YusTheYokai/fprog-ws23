@@ -1,5 +1,5 @@
 package at.technikum;
 
-public enum ChapterClassification {
+public enum Classification {
 	WAR, PEACE, NONE
 }

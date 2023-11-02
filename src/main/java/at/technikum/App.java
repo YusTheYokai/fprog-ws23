@@ -151,6 +151,12 @@ public class App {
         return Either.right(getChapters.apply(textTry.get()).map(splitAtSpace).map(classify));
     };
 
+    /**
+     * Maps a classification to a string with chapter index.
+     */
+    private static final Function<AtomicInteger, Function<Classification, String>> mapToChapterString =
+            chapterCount -> classification -> String.format("Chapter %d: %s", chapterCount.getAndIncrement(), classification.name());
+
     public static final void main(String[] args) {
         var result = pureMain.apply(args);
 
@@ -159,10 +165,10 @@ public class App {
             System.exit(1);
         }
 
-        AtomicInteger chapterCount = new AtomicInteger(1);
+        var stringMapper = mapToChapterString.apply(new AtomicInteger(1));
         result.getRight()
                 .map(o -> o.orElseGet(() -> Classification.NONE))
-                .map(c -> String.format("Chapter %d: %s", chapterCount.getAndIncrement(), c.name()))
+                .map(stringMapper)
                 .forEachOrdered(System.out::println);
     }
 }

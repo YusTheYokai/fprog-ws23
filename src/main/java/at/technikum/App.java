@@ -125,7 +125,7 @@ public class App {
 
     private static final Function<String[], Either<Exception, Stream<Optional<Classification>>>> pureMain = args -> {
         if (args.length != 1) {
-            return Either.left(new Exception("Invalid number of arguments. Usage: java -jar <jar-file> <text-file>."));
+            return Either.left(new Exception("Invalid number of arguments. Usage: java -jar <jar-file> <text-file>"));
         }
 
         var warTermsTry = readWarTerms.get();

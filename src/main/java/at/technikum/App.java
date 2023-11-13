@@ -42,13 +42,13 @@ public class App {
      * Reads the war terms file.
      * @see readFile
      */
-    public static final Supplier<Try<Stream<String>>> readWarTerms = () -> readFile.apply("src/main/resources/war_terms.txt");
+    private static final Supplier<Try<Stream<String>>> readWarTerms = () -> readFile.apply("src/main/resources/war_terms.txt");
 
     /**
      * Reads the peace terms file.
      * @see readFile
      */
-    public static final Supplier<Try<Stream<String>>> readPeaceTerms = () -> readFile.apply("src/main/resources/peace_terms.txt");
+    private static final Supplier<Try<Stream<String>>> readPeaceTerms = () -> readFile.apply("src/main/resources/peace_terms.txt");
 
     // /////////////////////////////////////////////////////////////////////////
     // TEXT PROCESSING

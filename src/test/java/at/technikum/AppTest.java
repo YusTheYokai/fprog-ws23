@@ -10,6 +10,31 @@ import org.junit.Test;
 public class AppTest {
 
 	@Test
+	public void testReadFileSuccess() {
+		// Arrange
+		var name = "src/test/resources/text.txt";
+
+		// Act
+		var result = App.readFile.apply(name);
+
+		// Assert
+		assertEquals(true, result.isSuccess());
+		assertEquals("test", result.get().findFirst().get());
+	}
+
+	@Test
+	public void testReadFileFailure() {
+		// Arrange
+		var name = "src/test/resources/does_not_exist.txt";
+
+		// Act
+		var result = App.readFile.apply(name);
+
+		// Assert
+		assertEquals(true, result.isFailure());
+	}
+
+	@Test
 	public void testClean() {
 		// Arrange
 		var stream = Arrays.asList(" a ", "  ", "b ").stream();

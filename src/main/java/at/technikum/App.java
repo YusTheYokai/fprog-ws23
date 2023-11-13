@@ -5,7 +5,6 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -31,7 +30,7 @@ public class App {
     /**
      * Reads a file and returns a Try of a Stream of lines.
      */
-    private static final Function<String, Try<Stream<String>>> readFile = name -> {
+    public static final Function<String, Try<Stream<String>>> readFile = name -> {
         try {
             return Try.success(Files.lines(Paths.get(name)));
         } catch (IOException e) {
@@ -43,13 +42,13 @@ public class App {
      * Reads the war terms file.
      * @see readFile
      */
-    private static final Supplier<Try<Stream<String>>> readWarTerms = () -> readFile.apply("src/main/resources/war_terms.txt");
+    public static final Supplier<Try<Stream<String>>> readWarTerms = () -> readFile.apply("src/main/resources/war_terms.txt");
 
     /**
      * Reads the peace terms file.
      * @see readFile
      */
-    private static final Supplier<Try<Stream<String>>> readPeaceTerms = () -> readFile.apply("src/main/resources/peace_terms.txt");
+    public static final Supplier<Try<Stream<String>>> readPeaceTerms = () -> readFile.apply("src/main/resources/peace_terms.txt");
 
     // /////////////////////////////////////////////////////////////////////////
     // TEXT PROCESSING
@@ -58,12 +57,12 @@ public class App {
     /**
      * Removes blank lines and trims the lines.
      */
-    private static final UnaryOperator<Stream<String>> clean = s -> s.filter(str -> !str.isBlank()).map(String::trim);
+    public static final UnaryOperator<Stream<String>> clean = s -> s.filter(str -> !str.isBlank()).map(String::trim);
 
     /**
      * Extracts the chapters from the text.
      */
-    private static final Function<String, Stream<String>> mapToChapters = s -> {
+    public static final Function<String, Stream<String>> mapToChapters = s -> {
         var pattern = Pattern.compile(CHAPTER_REGEX, Pattern.MULTILINE);
         var matcher = pattern.matcher(s);
         return matcher.results().map(result -> result.group(1));
@@ -72,7 +71,7 @@ public class App {
     /**
      * Joins a stream of strings using space as the delimiter.
      */
-    private static final Function<Stream<String>, String> join = s -> s.collect(Collectors.joining(" "));
+    public static final Function<Stream<String>, String> join = s -> s.collect(Collectors.joining(" "));
 
     /**
      * Maps a stream of strings to a stream of chapters.
@@ -85,7 +84,7 @@ public class App {
     /**
      * Supplies a stream of all words that are contained in filterList.
      */
-    private static final Function<
+    public static final Function<
         List<String>,
         Function<
             List<String>,
@@ -96,13 +95,13 @@ public class App {
     /**
      * Classifies a chapter as WAR or PEACE using the count of war and peace terms.
      */
-    private static final Function<
+    public static final Function<
         List<String>,
         Function<
             List<String>,
             Function<
                 Stream<String>,
-                Optional<Classification>>
+                Classification>
             >
         > classifyChapter = warTerms -> peaceTerms -> chapter -> {
         var cleanedChapter = chapter.map(str -> str.replaceAll("\\W", "").toLowerCase());
@@ -111,19 +110,19 @@ public class App {
         var warTermsCount = curriedGetFilteredWordStream.apply(warTerms).count();
         var peaceTermsCount = curriedGetFilteredWordStream.apply(peaceTerms).count();
 
-        return Optional.of(warTermsCount > peaceTermsCount ? Classification.WAR : Classification.PEACE);
+        return warTermsCount > peaceTermsCount ? Classification.WAR : Classification.PEACE;
     };
 
     /**
      * Splits a string at spaces.
      */
-    private static final Function<String, Stream<String>> splitAtSpace = s -> Arrays.stream(s.split(" "));
+    public static final Function<String, Stream<String>> splitAtSpace = s -> Arrays.stream(s.split(" "));
 
     // /////////////////////////////////////////////////////////////////////////
     // MAIN
     // /////////////////////////////////////////////////////////////////////////
 
-    private static final Function<String[], Either<Exception, Stream<Optional<Classification>>>> pureMain = args -> {
+    private static final Function<String[], Either<Exception, Stream<Classification>>> pureMain = args -> {
         if (args.length != 1) {
             return Either.left(new Exception("Invalid number of arguments. Usage: java -jar <jar-file> <text-file>"));
         }
@@ -154,7 +153,7 @@ public class App {
     /**
      * Maps a classification to a string with chapter index.
      */
-    private static final Function<AtomicInteger, Function<Classification, String>> mapToChapterString =
+    public static final Function<AtomicInteger, Function<Classification, String>> mapToChapterString =
             chapterCount -> classification -> String.format("Chapter %d: %s", chapterCount.getAndIncrement(), classification.name());
 
     public static final void main(String[] args) {
@@ -167,7 +166,6 @@ public class App {
 
         var stringMapper = mapToChapterString.apply(new AtomicInteger(1));
         result.getRight()
-                .map(o -> o.orElseGet(() -> Classification.NONE))
                 .map(stringMapper)
                 .forEachOrdered(System.out::println);
     }
